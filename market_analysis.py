@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 CACHE_DIR = 'analysis_cache'
 MARKET_CACHE_FILE = os.path.join(CACHE_DIR, 'market_analysis.json')
 CACHE_EXPIRY = timedelta(hours=24)
