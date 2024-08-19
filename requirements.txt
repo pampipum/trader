@@ -1,0 +1,13 @@
+ccxt
+pandas
+numpy
+anthropic
+ta
+rich
+flask
+apscheduler
+markdown
+yfinance
+pytz
+openai
+schedule

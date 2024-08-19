@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crypto and Market Analysis</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  </head>
+  <body>
+    <h1>Crypto and Market Analysis</h1>
+
+    <div id="symbol-selection">
+      <label for="symbol-type">Select Symbol Type:</label>
+      <select id="symbol-type">
+        <option value="favorite">Favorites</option>
+        <option value="crypto">Cryptocurrency</option>
+        <option value="market">Market Indices & Assets</option>
+        <option value="search">Search Any Ticker</option>
+      </select>
+
+      <div id="symbol-dropdown-container">
+        <label for="symbol">Select a Symbol:</label>
+        <select id="symbol">
+          <option value="">Select...</option>
+        </select>
+      </div>
+
+      <div id="search-container" style="display: none">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search for a ticker..."
+        />
+        <button id="search-button">Search</button>
+        <div id="search-results"></div>
+      </div>
+
+      <label for="model">Select Model:</label>
+      <select id="model">
+        <option value="claude">Claude</option>
+        <option value="openai">OpenAI</option>
+      </select>
+
+      <button id="analyze-btn">Analyze Selected Symbol</button>
+    </div>
+
+    <div id="progress-container" style="display: none">
+      <div class="progress">
+        <div
+          id="progress-bar"
+          class="progress-bar"
+          role="progressbar"
+          style="width: 0%"
+          aria-valuenow="0"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          0%
+        </div>
+      </div>
+    </div>
+
+    <div id="analysis-container">
+      <div class="meta-info" style="display: none">
+        <p><strong>Symbol:</strong> <span id="symbol-display"></span></p>
+        <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+        <p><strong>Model:</strong> <span id="model-used"></span></p>
+      </div>
+      <div id="analysis-content"></div>
+    </div>
+
+    <button id="analyze-market-btn">Analyze Overall Market</button>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
