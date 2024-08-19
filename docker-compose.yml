@@ -1,9 +1,0 @@
-version: "3"
-services:
-  market-analysis:
-    build: .
-    volumes:
-      - ./.env:/app/.env
-    restart: always
-    environment:
-      - TZ=UTC # Set the timezone as needed
