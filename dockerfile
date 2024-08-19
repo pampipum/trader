@@ -29,5 +29,7 @@ ENV ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 ENV ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
 ENV OPENAI_API_KEY=${OPENAI_API_KEY}
 
-# Run daily_market_email.py when the container launches
-CMD ["python", "daily_market_email.py"]
+# Expose port 5000 for the Flask app
+EXPOSE 5000
+
+# The CMD instruction is now removed as it will be specified in docker-compose.yml
