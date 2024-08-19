@@ -11,3 +11,4 @@ yfinance
 pytz
 openai
 schedule
+dotenv
