@@ -13,7 +13,7 @@ from ta.volume import OnBalanceVolumeIndicator
 from api_logic import analyze_with_claude
 from system_prompt import SYSTEM_PROMPT
 
-# Parameters
+# Updated Parameters
 TIMEFRAMES = ['90m', '1d', '1wk']
 LOOKBACK_YEARS = 1
 
@@ -33,68 +33,53 @@ ATR_PERIOD = 14
 DATA_CACHE_DIR = 'data_cache'
 os.makedirs(DATA_CACHE_DIR, exist_ok=True)
 
-# Timeframe mapping for crypto exchanges
+# Updated timeframe mapping for crypto exchanges
 CRYPTO_TIMEFRAME_MAP = {
-    '90m': '4h',
+    '90m': '90m',
     '1d': '1d',
     '1wk': '1w'
 }
 
 def fetch_or_load_data(symbol, timeframes, filename_prefix='data'):
     dataframes = {}
-    is_crypto = '/' in symbol
 
     for timeframe in timeframes:
-        if is_crypto:
-            exchange_timeframe = CRYPTO_TIMEFRAME_MAP.get(timeframe, timeframe)
-        else:
-            exchange_timeframe = timeframe
-
-        filename = os.path.join(DATA_CACHE_DIR, f'{filename_prefix}_{symbol.replace("/", "").replace("^", "")}__{timeframe}.pkl')
+        filename = os.path.join(DATA_CACHE_DIR, f'{filename_prefix}_{symbol.replace("/", "").replace("^", "").replace("-", "")}__{timeframe}.pkl')
         
-        if os.path.exists(filename):
+        if os.path.exists(filename) and timeframe != '90m':  # Don't use cache for 90m data
             print(f"Loading {timeframe} data from {filename}")
             with open(filename, 'rb') as f:
                 df = pickle.load(f)
             
-            # Ensure index is tz-naive
             df.index = pd.to_datetime(df.index).tz_localize(None)
             
             # Update data
-            if is_crypto:
-                latest_df = fetch_all_ohlcv(symbol, exchange_timeframe)
-                if not latest_df.empty:
-                    df = pd.concat([df, latest_df[~latest_df.index.isin(df.index)]])
-            else:
-                end_date = datetime.now().replace(tzinfo=None)
-                start_date = df.index[-1].replace(tzinfo=None)
-                latest_data = yf.download(symbol, start=start_date, end=end_date, interval=timeframe)
-                if not latest_data.empty:
-                    latest_data.index = latest_data.index.tz_localize(None)
-                    df = pd.concat([df, latest_data[~latest_data.index.isin(df.index)]])
+            end_date = datetime.now().replace(tzinfo=None)
+            start_date = df.index[-1].replace(tzinfo=None)
+            latest_data = fetch_financial_data(symbol, timeframe, start=start_date, end=end_date)
+            if not latest_data.empty:
+                latest_data.index = latest_data.index.tz_localize(None)
+                df = pd.concat([df, latest_data[~latest_data.index.isin(df.index)]])
         else:
-            print(f"Fetching {timeframe} data from exchange...")
-            if is_crypto:
-                df = fetch_all_ohlcv(symbol, exchange_timeframe)
-            else:
-                df = fetch_financial_data(symbol, timeframe)
+            print(f"Fetching {timeframe} data from yfinance...")
+            df = fetch_financial_data(symbol, timeframe)
             
             if not df.empty:
-                # Ensure index is tz-naive before saving
                 df.index = pd.to_datetime(df.index).tz_localize(None)
                 
-                with open(filename, 'wb') as f:
-                    pickle.dump(df, f)
+                if timeframe != '90m':  # Don't cache 90m data
+                    with open(filename, 'wb') as f:
+                        pickle.dump(df, f)
             else:
                 print(f"No data available for {symbol} with timeframe {timeframe}")
                 continue  # Skip to the next timeframe
         
-        # Final check to ensure all datetime objects are tz-naive
         df.index = pd.to_datetime(df.index).tz_localize(None)
         
         # Filter for the last LOOKBACK_YEARS
-        cutoff_date = datetime.now().replace(tzinfo=None) - timedelta(days=365*LOOKBACK_YEARS)
-        df = df[df.index > cutoff_date]
+        if timeframe != '90m':
+            cutoff_date = datetime.now().replace(tzinfo=None) - timedelta(days=365*LOOKBACK_YEARS)
+            df = df[df.index > cutoff_date]
         
         if not df.empty:
             print(f"\nLatest {timeframe} data points:")
@@ -105,17 +90,39 @@ def fetch_or_load_data(symbol, timeframes, filename_prefix='data'):
     
     return dataframes
 
-# Update fetch_financial_data function
-def fetch_financial_data(symbol, timeframe):
-    if timeframe == '90m':
-        period = '1mo'
-    elif timeframe == '1d':
-        period = '1y'
-    elif timeframe == '1wk':
-        period = '2y'
+
+def fetch_financial_data(symbol, timeframe, start=None, end=None):
+    end = end or datetime.now()
     
-    df = yf.Ticker(symbol).history(period=period, interval=timeframe)
-    df.index = df.index.tz_localize(None)  # Ensure tz-naive
+    if timeframe == '90m':
+        # For 90m data, only fetch the last 59 days
+        start = end - timedelta(days=59)
+    elif start is None:
+        if timeframe == '1d':
+            start = end - timedelta(days=365*LOOKBACK_YEARS)
+        elif timeframe == '1wk':
+            start = end - timedelta(days=365*LOOKBACK_YEARS*2)  # Fetch more data for weekly timeframe
+
+    # Convert timeframe to yfinance interval
+    if timeframe == '90m':
+        interval = '90m'
+    elif timeframe == '1d':
+        interval = '1d'
+    elif timeframe == '1wk':
+        interval = '1wk'
+    else:
+        raise ValueError(f"Unsupported timeframe: {timeframe}")
+
+    try:
+        df = yf.download(symbol.replace('/', '-'), start=start, end=end, interval=interval)
+    except Exception as e:
+        print(f"Error downloading data for {symbol}: {str(e)}")
+        return pd.DataFrame()
+
+    if df.empty:
+        print(f"No data available for {symbol} with timeframe {timeframe}")
+        return df
+
     df.index.name = 'timestamp'
     df = df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'})
     return df
@@ -259,48 +266,17 @@ def compile_chart_data(symbol, dataframes):
     return compiled_data
 
 def main(symbol):
-    is_crypto = '/' in symbol
-
-    if symbol in ['SPX', 'VIX', 'QQQ', 'US10Y', 'US02Y', 'US30Y', 'GOLD', 'SILVER', 'OIL_CRUD']:
-        # Use yfinance for market indices and assets
-        symbol_map = {
-            'SPX': '^GSPC',
-            'VIX': '^VIX',
-            'QQQ': 'QQQ',
-            'US10Y': '^TNX',
-            'US02Y': '^TWO',
-            'US30Y': '^TYX',
-            'GOLD': 'GC=F',
-            'SILVER': 'SI=F',
-            'OIL_CRUD': 'CL=F'
-        }
-        yf_symbol = symbol_map[symbol]
-        dataframes = fetch_or_load_data(yf_symbol, TIMEFRAMES)
-    else:
-        dataframes = fetch_or_load_data(symbol, TIMEFRAMES)
+    dataframes = fetch_or_load_data(symbol, TIMEFRAMES)
     
     for timeframe in TIMEFRAMES:
         print(f"Adding indicators for {timeframe} timeframe...")
         dataframes[timeframe] = add_indicators(dataframes[timeframe])
-
-    # Fetch additional data (only for crypto assets)
-    if is_crypto:
-        fear_greed_index = fetch_crypto_fear_greed_index()
-        order_book = fetch_order_book(symbol)
-        funding_rate = fetch_funding_rate(symbol)
-    else:
-        fear_greed_index = "N/A"
-        order_book = "N/A"
-        funding_rate = "N/A"
 
     print("Compiling chart data for analysis...")
     compiled_data = compile_chart_data(symbol, dataframes)
 
     # Add additional data to compiled_data
     compiled_data['symbol'] = symbol
-    compiled_data['fear_greed_index'] = fear_greed_index
-    compiled_data['order_book'] = order_book
-    compiled_data['funding_rate'] = funding_rate
 
     return compiled_data
 

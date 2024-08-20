@@ -71,7 +71,6 @@ $(document).ready(function () {
     $("#search-results").empty();
   });
 
-  // Analyze button click event
   $("#analyze-btn").click(function () {
     const symbol = $("#symbol").val() || $("#search-input").val();
     const model = $("#model").val();
@@ -95,7 +94,17 @@ $(document).ready(function () {
           $("#symbol-display").text(data.symbol || symbol);
           $("#timestamp").text(data.timestamp || new Date().toISOString());
           $("#model-used").text(data.model || model);
-          $("#analysis-content").html(data.analysis);
+
+          // Convert markdown to HTML
+          const converter = new showdown.Converter();
+          const htmlContent = converter.makeHtml(data.analysis);
+
+          $("#analysis-content").html(htmlContent);
+
+          // Apply syntax highlighting
+          document.querySelectorAll("pre code").forEach((block) => {
+            hljs.highlightBlock(block);
+          });
         } else {
           $("#analysis-content").html(
             "<p>No analysis available for this symbol.</p>"

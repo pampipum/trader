@@ -3,17 +3,16 @@ import json
 from datetime import datetime, timedelta
 from flask import current_app
 import os
+import pandas as pd
 from claudeanalize import (
     fetch_or_load_data, add_indicators, compile_chart_data, TIMEFRAMES
 )
 from api_logic import analyze_with_claude
 from system_prompt import SYSTEM_PROMPT, MARKET_ANALYSIS_PROMPT
-from alpha_vantage_api import fetch_market_data  # Import the new function
-from datetime import datetime, timedelta
+from alpha_vantage_api import fetch_market_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 CACHE_DIR = 'analysis_cache'
 MARKET_CACHE_FILE = os.path.join(CACHE_DIR, 'market_analysis.json')
@@ -42,13 +41,17 @@ TRADE_ASSETS = {
     'ETH/USDT': 'ETH-USD'
 }
 
+def update_progress(progress):
+    try:
+        current_app.config['MARKET_ANALYSIS_PROGRESS'] = progress
+    except RuntimeError:
+        logger.warning("Working outside of application context. Progress update skipped.")
 
 def analyze_asset(symbol, original_symbol):
     try:
         current_time = datetime.now()
         cache_file = os.path.join(CACHE_DIR, f'{symbol.replace("^", "").replace("/", "-").replace("=", "")}_analysis.json')
 
-        # Check if a recent cached analysis exists
         if os.path.exists(cache_file):
             with open(cache_file, 'r') as f:
                 cached_analysis = json.load(f)
@@ -58,69 +61,32 @@ def analyze_asset(symbol, original_symbol):
                 if current_time - cache_time < CACHE_EXPIRY:
                     return cached_analysis
 
-        # If no recent cache exists, perform the analysis
         data = fetch_or_load_data(symbol, TIMEFRAMES)
         
-        if isinstance(data, str):
-            logger.error(f"fetch_or_load_data returned a string for {original_symbol}: {data}")
-            return {
-                'symbol': original_symbol,
-                'error': f'Data fetch failed: {data}',
-                'timestamp': current_time.isoformat()
-            }
+        if not data or not isinstance(data, dict):
+            raise ValueError(f"Invalid data returned for {original_symbol}")
+
+        available_timeframes = list(data.keys())
         
-        if not isinstance(data, dict):
-            logger.error(f"fetch_or_load_data returned unexpected type for {original_symbol}: {type(data)}")
-            return {
-                'symbol': original_symbol,
-                'error': f'Unexpected data type: {type(data)}',
-                'timestamp': current_time.isoformat()
-            }
-        
-        for timeframe in TIMEFRAMES:
-            if timeframe not in data:
-                logger.error(f"Missing timeframe {timeframe} for {original_symbol}")
-                return {
-                    'symbol': original_symbol,
-                    'error': f'Missing timeframe {timeframe}',
-                    'timestamp': current_time.isoformat()
-                }
-            if not isinstance(data[timeframe], pd.DataFrame):
-                logger.error(f"Invalid data type for {original_symbol} at {timeframe}: {type(data[timeframe])}")
-                return {
-                    'symbol': original_symbol,
-                    'error': f'Invalid data type for timeframe {timeframe}',
-                    'timestamp': current_time.isoformat()
-                }
+        for timeframe in available_timeframes:
+            if timeframe not in data or not isinstance(data[timeframe], pd.DataFrame):
+                raise ValueError(f"Missing or invalid data for {original_symbol} at {timeframe}")
             data[timeframe] = add_indicators(data[timeframe])
         
         compiled_data = compile_chart_data(symbol, data)
         
-        if isinstance(compiled_data, str):
-            logger.error(f"compile_chart_data returned a string for {original_symbol}: {compiled_data}")
-            return {
-                'symbol': original_symbol,
-                'error': f'Data compilation failed: {compiled_data}',
-                'timestamp': current_time.isoformat()
-            }
-        
         if not isinstance(compiled_data, dict):
-            logger.error(f"compile_chart_data returned unexpected type for {original_symbol}: {type(compiled_data)}")
-            return {
-                'symbol': original_symbol,
-                'error': f'Unexpected compiled data type: {type(compiled_data)}',
-                'timestamp': current_time.isoformat()
-            }
+            raise ValueError(f"Invalid compiled data for {original_symbol}")
         
         response = analyze_with_claude(compiled_data, SYSTEM_PROMPT)
         
         result = {
             'symbol': original_symbol,
             'analysis': response,
-            'timestamp': current_time.isoformat()
+            'timestamp': current_time.isoformat(),
+            'available_timeframes': available_timeframes
         }
 
-        # Cache the analysis
         with open(cache_file, 'w') as f:
             json.dump(result, f)
 
@@ -136,33 +102,13 @@ def analyze_asset(symbol, original_symbol):
 def analyze_market():
     current_time = datetime.now()
     
-    def update_progress(progress):
-        current_app.config['MARKET_ANALYSIS_PROGRESS'] = progress
+    update_progress(0)  # Initialize progress
 
     individual_analyses = {}
     failed_analyses = []
-    assets_to_analyze = []
-
-    update_progress(0)  # Initialize progress
-
-    # Analyze all assets, including crypto pairs
-    for asset, symbol in {**MACRO_ASSETS, **TRADE_ASSETS}.items():
-        cache_file = os.path.join(CACHE_DIR, f'{symbol.replace("^", "").replace("/", "-").replace("=", "")}_analysis.json')
-        
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
-                cached_analysis = json.load(f)
-            
-            if 'timestamp' in cached_analysis:
-                cache_time = datetime.fromisoformat(cached_analysis['timestamp'])
-                if current_time - cache_time < CACHE_EXPIRY:
-                    individual_analyses[asset] = cached_analysis
-                    continue
-        
-        assets_to_analyze.append((asset, symbol))
-
+    assets_to_analyze = list(MACRO_ASSETS.items()) + list(TRADE_ASSETS.items())
     total_assets = len(assets_to_analyze)
-    
+
     for i, (asset, symbol) in enumerate(assets_to_analyze):
         logger.info(f"Analyzing asset: {asset} ({symbol})")
         analysis = analyze_asset(symbol, asset)
@@ -171,21 +117,14 @@ def analyze_market():
         if 'error' in analysis:
             failed_analyses.append(asset)
             logger.error(f"Analysis failed for {asset}: {analysis['error']}")
-        else:
-            # Cache the individual asset analysis
-            cache_file = os.path.join(CACHE_DIR, f'{symbol.replace("^", "").replace("/", "-").replace("=", "")}_analysis.json')
-            with open(cache_file, 'w') as f:
-                json.dump(analysis, f)
         
         progress = int(((i + 1) / total_assets) * 70)  # Up to 70% for individual analyses
         update_progress(progress)
 
-    # Fetch data from Alpha Vantage API
     logger.info("Fetching data from Alpha Vantage API")
     alpha_vantage_data = fetch_market_data()
     update_progress(80)
 
-    # Prepare data for market analysis
     market_data = {
         "macro_assets": {asset: analysis for asset, analysis in individual_analyses.items() if asset in MACRO_ASSETS},
         "trade_assets": {asset: analysis for asset, analysis in individual_analyses.items() if asset in TRADE_ASSETS},
@@ -193,7 +132,6 @@ def analyze_market():
         "alpha_vantage_data": alpha_vantage_data
     }
     
-    # Perform overall market analysis
     logger.info("Performing overall market analysis")
     market_analysis = analyze_with_claude(market_data, MARKET_ANALYSIS_PROMPT)
     update_progress(100)  # Market analysis complete
@@ -208,6 +146,38 @@ def analyze_market():
     }
 
     return result
+
+def format_analysis_as_html(analysis_data):
+    html_content = f"""
+    <h1>Elite Market Analysis Daily Briefing</h1>
+
+    <div class="section">
+    <h2>1. Market Overview</h2>
+    <p>{analysis_data['market_overview']}</p>
+    </div>
+
+    <div class="section">
+    <h2>2. Key Asset Performance</h2>
+    <table>
+    <tr><th>Asset</th><th>1D % Change</th><th>1W % Change</th><th>1M % Change</th></tr>
+    """
+
+    for asset, changes in analysis_data['asset_performance'].items():
+        html_content += f"<tr><td>{asset}</td><td>{changes['1D']}%</td><td>{changes['1W']}%</td><td>{changes['1M']}%</td></tr>"
+
+    html_content += """
+    </table>
+    </div>
+
+    <!-- Add other sections here -->
+
+    <div class="section">
+    <h2>10. Conclusion and Outlook</h2>
+    <p>{analysis_data['conclusion']}</p>
+    </div>
+    """
+
+    return html_content
 
 if __name__ == '__main__':
     result = analyze_market()

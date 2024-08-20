@@ -32,7 +32,7 @@ Trade Assets:
 Failed Analyses:
 {json.dumps(data['failed_analyses'], indent=2)}
 
-Please provide a comprehensive market analysis based on this data.
+Please provide a comprehensive market analysis based on this data. Format your response in markdown.
 """
         else:
             # This is individual asset data
@@ -40,13 +40,12 @@ Please provide a comprehensive market analysis based on this data.
 Here's the compiled chart data, price action information, and technical indicator information for analysis:
 {json.dumps(data, indent=2)}
 
-Please provide your analysis based on this data, focusing on price action, technical indicators, and potential trading strategies.
+Please provide your analysis based on this data, focusing on price action, technical indicators, and potential trading strategies. Format your response in markdown.
 """
         
         logger.info("Sending request to Claude API")
         response = client.messages.create(
             model="claude-3-haiku-20240307",
-            #model="claude-3-5-sonnet-20240620",            
             max_tokens=4000,
             temperature=1,
             system=system_prompt,
