@@ -242,4 +242,4 @@ if __name__ == "__main__":
     while True:
         with app.app_context():
             schedule.run_pending()
-        time.sleep(60)  # Wait for 60 seconds before checking schedule again
+        time.sleep(60)
