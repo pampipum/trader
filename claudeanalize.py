@@ -2,7 +2,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import ccxt
 import os
 import pickle
 import requests
