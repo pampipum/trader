@@ -397,10 +397,12 @@ When creating the daily market briefing, follow this enhanced structure, using b
 ## 2. Key Asset Performance (1 paragraph + table)
    - Summarize the performance of the analyzed assets, including both traditional and crypto assets.
    - Include a table showing percentage changes for all assets across different timeframes.
+   - Provide specific price levels for key assets, including their current price and recent highs/lows.
 
 ## 3. Cryptocurrency Market Update (1-2 paragraphs)
    - Provide a detailed analysis of the cryptocurrency market, focusing on the analyzed crypto pairs (BTC/USDT, SOL/USDT, SOL/BTC, ETH/USDT).
    - Discuss trends, correlations, and any significant events affecting the crypto market.
+   - Include specific price levels and percentage changes for major cryptocurrencies.
 
 ## 4. Market News Highlights (5-7 bullet points)
    - Summarize key market news from the Alpha Vantage news sentiment data.
@@ -411,34 +413,54 @@ When creating the daily market briefing, follow this enhanced structure, using b
    - Provide an overview of technical indicators across multiple timeframes for the analyzed assets, including both traditional and crypto assets.
    - Incorporate insights from the Alpha Vantage analytics data for major indices and cryptocurrencies.
    - Highlight any significant divergences or confluences in technical signals between traditional and crypto markets.
+   - Include specific price levels for key support and resistance areas, moving averages, and other relevant technical indicators.
 
 ## 6. Top Trading Opportunities (2-3 trade ideas)
    - Present the most promising trading setups based on the Setup Quality Assessment and Alpha Vantage data.
    - Include at least one cryptocurrency trade idea if the data supports it.
-   - For each, include:
+   - For each trade idea, provide:
      * Asset name and direction (long/short)
-     * Key levels (entry, stop loss, take profit)
+     * Specific price levels for:
+       - Entry point(s)
+       - Stop loss
+       - Take profit targets (multiple levels if applicable)
+     * Exact Fibonacci retracement and extension levels used in the analysis
+     * Current price and recent high/low prices
      * Brief rationale including technical factors and relevant news
-     * Risk-reward ratio and setup quality score
+     * Risk-reward ratio (calculated using the specific price levels)
+     * Setup quality score (out of 10)
+   - Example format:
+     "Long BTC/USDT:
+      Entry: $28,500 (current price: $28,350)
+      Stop Loss: $27,800 (below 0.618 Fib retracement at $27,950)
+      Take Profit: TP1 $29,200 (0.618 Fib extension), TP2 $30,000 (psychological level)
+      Recent Low: $27,500, Recent High: $28,800
+      Rationale: Bullish divergence on 4H RSI, break above 200 EMA at $28,400
+      Risk-Reward: 1:2 (based on TP1)
+      Setup Quality: 8/10"
 
 ## 7. Market Sentiment and Volatility (3-4 sentences)
    - Comment on overall market sentiment based on the analyzed assets and news sentiment data.
    - Compare sentiment and volatility between traditional and crypto markets.
    - Note any significant volatility observed in the data, particularly for cryptocurrencies.
+   - Include specific volatility measures (e.g., VIX levels, ATR values) where applicable.
 
 ## 8. Risk Factors and Market Threats (3-5 bullet points)
    - Identify potential market risks or volatility catalysts based on the analyzed data and news.
    - Consider both macro-level threats and crypto-specific risks.
    - Discuss any regulatory news or developments that could impact markets, especially cryptocurrencies.
+   - Provide specific price levels or economic indicators to watch that could signal increasing risk.
 
 ## 9. Correlation Analysis (1 paragraph)
    - Analyze correlations between different asset classes, including traditional markets and cryptocurrencies.
    - Highlight any unusual correlations or decoupling between assets.
+   - Provide specific correlation coefficients where relevant.
 
 ## 10. Conclusion and Outlook (3-4 sentences)
    - Summarize the key takeaways from the analysis, including both traditional and crypto markets.
    - Provide a brief outlook for short-term market direction based on all available data.
    - Suggest areas for traders and investors to focus on in the coming days.
+   - Include any specific price levels or events to watch that could confirm or invalidate the current outlook.
 
 Guidelines for Report Creation:
 1. Use ONLY the data provided in the input, including both the asset analyses and the Alpha Vantage API data.
@@ -450,6 +472,7 @@ Guidelines for Report Creation:
 7. Highlight areas of uncertainty or conflicting signals when present.
 8. Use bullet points, tables, and formatting to enhance readability and emphasize key points.
 9. Aim for the entire briefing to be readable in 10-15 minutes while providing comprehensive coverage of the available data.
+10. Always include specific price levels, percentages, and numerical values where applicable to provide precise, actionable information.
 
 Remember to base your analysis solely on the data provided, including individual asset analyses, macro context assets, crypto assets, and the Alpha Vantage API data. Do not include speculation about broader market conditions or external factors unless explicitly provided in the input data.
 
