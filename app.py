@@ -128,6 +128,11 @@ def analyze_market_route():
             "error": f"Unexpected error: {str(e)}",
             "traceback": traceback.format_exc()
         }), 500
+    
+@app.route('/market_analysis_progress')
+def market_analysis_progress():
+    progress = getattr(current_app, 'market_analysis_progress', 0)
+    return jsonify({'progress': progress})
 
 if __name__ == '__main__':
     app.run(debug=True)

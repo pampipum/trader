@@ -1,8 +1,9 @@
+import os
+from dotenv import load_dotenv
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import os
 import pickle
 import requests
 from ta.trend import EMAIndicator
@@ -11,6 +12,13 @@ from ta.volatility import BollingerBands, AverageTrueRange
 from ta.volume import OnBalanceVolumeIndicator
 from api_logic import analyze_with_claude
 from system_prompt import SYSTEM_PROMPT
+from fundingrate import funding_dydx
+
+# Load environment variables
+load_dotenv()
+
+# Get CoinAPI key from .env file
+COINAPI_KEY = os.getenv('COINAPI_KEY')
 
 # Updated Parameters
 TIMEFRAMES = ['90m', '1d', '1wk']
@@ -202,24 +210,61 @@ def calculate_fibonacci_levels(df):
     fib_levels = {level: low + diff * level for level in levels}
     return fib_levels
 
+def is_crypto(symbol):
+    # Simple check to determine if a symbol is likely a cryptocurrency
+    return not symbol.startswith('^') and '/' in symbol
+
 def fetch_order_book(symbol, limit=20):
-    exchange = ccxt.binance()
-    order_book = exchange.fetch_order_book(symbol, limit)
-    return order_book
+    if not is_crypto(symbol):
+        print(f"Skipping order book fetch for non-crypto asset: {symbol}")
+        return None
+
+    try:
+        # Convert symbol to CoinAPI format (e.g., 'BTC/USDT' to 'DYDX_PERP_BTC_USDT')
+        base, quote = symbol.split('/')
+        coinapi_symbol = f"DYDX_PERP_{base}_{quote}"
+
+        url = f"https://rest.coinapi.io/v1/orderbooks/{coinapi_symbol}/current"
+        headers = {'X-CoinAPI-Key': COINAPI_KEY}
+        response = requests.get(url, headers=headers, timeout=10)  # Add timeout
+
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'bids': data['bids'][:limit],
+                'asks': data['asks'][:limit]
+            }
+        else:
+            print(f"Error fetching order book for {symbol}: HTTP Status {response.status_code}")
+            print(f"Response content: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Network error fetching order book for {symbol}: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Error fetching order book for {symbol}: {str(e)}")
+        return None
 
 def fetch_funding_rate(symbol):
+    if not is_crypto(symbol):
+        print(f"Skipping funding rate fetch for non-crypto asset: {symbol}")
+        return None
+
     try:
-        exchange = ccxt.binance()
-        # Check if the symbol is a perpetual futures contract
-        markets = exchange.load_markets()
-        if symbol in markets and markets[symbol]['type'] == 'future' and markets[symbol]['linear']:
-            funding_rate = exchange.fetch_funding_rate(symbol)
-            return funding_rate['fundingRate']
+        # Convert symbol to dYdX format if necessary (e.g., 'BTC/USDT' to 'BTC-USD')
+        base, _ = symbol.split('/')
+        dydx_symbol = f"{base}-USD"
+
+        funder = funding_dydx([dydx_symbol])
+        rates = funder.get_formatted_funding_rates()
+        if not rates.empty:
+            return rates.iloc[0]['rate']  # Return the most recent funding rate
         else:
-            return "N/A (Not a perpetual futures contract)"
+            print(f"No funding rate data available for {symbol}")
+            return None
     except Exception as e:
         print(f"Error fetching funding rate for {symbol}: {str(e)}")
-        return "N/A (Error fetching data)"
+        return None
 
 def compile_chart_data(symbol, dataframes):
     compiled_data = {}
@@ -262,6 +307,18 @@ def compile_chart_data(symbol, dataframes):
             },
             "fibonacci_levels": {k: float(v) for k, v in fib_levels.items()}
         }
+    
+    if is_crypto(symbol):
+        # Fetch order book data
+        order_book = fetch_order_book(symbol)
+        if order_book:
+            compiled_data['order_book'] = order_book
+        
+        # Fetch funding rate data
+        funding_rate = fetch_funding_rate(symbol)
+        if funding_rate is not None:
+            compiled_data['funding_rate'] = funding_rate
+    
     return compiled_data
 
 def main(symbol):
@@ -276,9 +333,20 @@ def main(symbol):
 
     # Add additional data to compiled_data
     compiled_data['symbol'] = symbol
+    if is_crypto(symbol):
+        compiled_data['fear_greed_index'] = fetch_crypto_fear_greed_index()
 
-    return compiled_data
+    print("Performing analysis with Claude...")
+    analysis = analyze_with_claude(compiled_data, SYSTEM_PROMPT)
+
+    return {
+        'compiled_data': compiled_data,
+        'analysis': analysis
+    }
 
 if __name__ == "__main__":
     # You can add any testing or standalone functionality here
-    pass
+    symbol = "BTC/USD"  # Example symbol
+    result = main(symbol)
+    print(f"Analysis for {symbol}:")
+    print(result['analysis'])
