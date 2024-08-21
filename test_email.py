@@ -7,6 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from market_analysis import analyze_market
 import logging
 import re
+import markdown2
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,84 +22,49 @@ RECEIVER_EMAIL = os.getenv('RECEIVER_EMAIL')
 SMTP_SERVER = os.getenv('SMTP_SERVER')
 SMTP_PORT = int(os.getenv('SMTP_PORT'))
 
-def format_analysis_as_html(analysis_text):
-    sections = analysis_text.split('\n\n')
+def format_asset_table(asset_data):
+    table_html = """
+    <table>
+        <tr>
+            <th>Asset</th>
+            <th>1-Day % Change</th>
+            <th>5-Day % Change</th>
+            <th>1-Month % Change</th>
+        </tr>
+    """
+    for asset, changes in asset_data.items():
+        table_html += f"""
+        <tr>
+            <td>{asset}</td>
+            <td class="{'positive' if float(changes['1D'].rstrip('%')) >= 0 else 'negative'}">{changes['1D']}</td>
+            <td class="{'positive' if float(changes['5D'].rstrip('%')) >= 0 else 'negative'}">{changes['5D']}</td>
+            <td class="{'positive' if float(changes['1M'].rstrip('%')) >= 0 else 'negative'}">{changes['1M']}</td>
+        </tr>
+        """
+    table_html += "</table>"
+    return table_html
+
+def convert_markdown_to_html(markdown_content):
+    # Convert Markdown to HTML
+    html_content = markdown2.markdown(markdown_content)
     
-    html_content = "<div class='content'>"
+    # Replace the asset performance table
+    asset_table_match = re.search(r'\| Asset \| 1-Day % Change \| 5-Day % Change \| 1-Month % Change \|([\s\S]*?)\n\n', markdown_content)
+    if asset_table_match:
+        asset_data = {}
+        for line in asset_table_match.group(1).strip().split('\n'):
+            parts = line.split('|')
+            if len(parts) == 6:
+                asset = parts[1].strip()
+                asset_data[asset] = {
+                    '1D': parts[2].strip(),
+                    '5D': parts[3].strip(),
+                    '1M': parts[4].strip()
+                }
+        asset_table_html = format_asset_table(asset_data)
+        html_content = html_content.replace(asset_table_match.group(0), asset_table_html)
     
-    for section in sections:
-        if section.strip():
-            lines = section.split('\n')
-            title = lines[0].strip()
-            content = '\n'.join(lines[1:])
-            
-            if title == "Elite Market Analysis Daily Briefing":
-                html_content += f"<h1>{title}</h1>"
-            elif title.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                html_content += f"<h2>{title}</h2>"
-            else:
-                html_content += f"<h3>{title}</h3>"
-            
-            if "The table below" in content:
-                # Handle the table
-                table_content = content.split('The table below')[1].strip()
-                html_content += "<p>The table below" + table_content.split('\n')[0] + "</p>"
-                html_content += format_table(table_content)
-            elif content.startswith('- '):
-                # Handle bullet points
-                html_content += "<ul class='bullet-points'>"
-                for point in content.split('\n'):
-                    if point.strip().startswith('- '):
-                        html_content += f"<li>{point.strip('- ')}</li>"
-                html_content += "</ul>"
-            elif "Setup Quality Score:" in content:
-                # Handle trading opportunities
-                html_content += format_trading_opportunities(content)
-            else:
-                html_content += f"<p>{content}</p>"
-    
-    html_content += "</div>"
     return html_content
-
-def format_table(table_content):
-    # Extract table rows
-    rows = re.findall(r'\|(.*?)\|', table_content)
-    
-    html_table = "<table class='asset-performance'><thead><tr>"
-    headers = rows[0].split('|')
-    for header in headers:
-        html_table += f"<th>{header.strip()}</th>"
-    html_table += "</tr></thead><tbody>"
-    
-    for row in rows[1:]:
-        html_table += "<tr>"
-        cells = row.split('|')
-        for i, cell in enumerate(cells):
-            if i == 0:  # Asset name
-                html_table += f"<td>{cell.strip()}</td>"
-            else:  # Percentage changes
-                html_table += f"<td class='number'>{cell.strip()}</td>"
-        html_table += "</tr>"
-    
-    html_table += "</tbody></table>"
-    return html_table
-
-def format_trading_opportunities(content):
-    opportunities = content.split('\n\n')
-    html_opportunities = "<div class='trading-opportunities'>"
-    for opportunity in opportunities:
-        if opportunity.strip():
-            lines = opportunity.split('\n')
-            title = lines[0].strip()
-            details = '\n'.join(lines[1:])
-            html_opportunities += f"""
-            <div class='opportunity-card'>
-                <h4>{title}</h4>
-                <p>{details}</p>
-            </div>
-            """
-    html_opportunities += "</div>"
-    return html_opportunities
 
 def send_market_analysis_email():
     logging.info("Starting market analysis...")
@@ -107,111 +73,24 @@ def send_market_analysis_email():
     if analysis_result['status'] == 'success':
         market_analysis = analysis_result['market_analysis']
         
-        # Format the analysis as HTML
-        formatted_content = format_analysis_as_html(market_analysis)
+        # Convert Markdown to HTML
+        html_content = convert_markdown_to_html(market_analysis)
+        
+        # Read the email template
+        with open('email_template.html', 'r') as template_file:
+            email_template = template_file.read()
+        
+        # Insert the HTML content into the template
+        email_html = email_template.replace('{{REPORT_CONTENT}}', html_content)
         
         # Create the email content
         message = MIMEMultipart("alternative")
-        message["Subject"] = "Daily Market Analysis"
+        message["Subject"] = "Daily Market Analysis (Test)"
         message["From"] = SENDER_EMAIL
         message["To"] = RECEIVER_EMAIL
 
-        # Create the HTML version of the email
-        html = f"""
-        <html>
-        <head>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #000000;
-                    font-size: 18px;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }}
-                .content {{
-                    background-color: #ffffff;
-                    padding: 20px;
-                    border-radius: 5px;
-                }}
-                h1 {{
-                    font-size: 24px;
-                    font-weight: bold;
-                    border-bottom: 2px solid #000000;
-                    padding-bottom: 10px;
-                }}
-                h2 {{
-                    font-size: 20px;
-                    font-weight: bold;
-                    margin-top: 30px;
-                }}
-                h3 {{
-                    font-size: 18px;
-                    font-weight: bold;
-                    margin-top: 20px;
-                }}
-                h4 {{
-                    font-size: 18px;
-                    font-weight: bold;
-                    margin-top: 15px;
-                    margin-bottom: 5px;
-                }}
-                p, li {{
-                    font-size: 18px;
-                    font-weight: normal;
-                    margin-bottom: 10px;
-                }}
-                ul.bullet-points {{
-                    padding-left: 20px;
-                    margin-bottom: 15px;
-                }}
-                .bullet-points li {{
-                    margin-bottom: 5px;
-                }}
-                .asset-performance {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-bottom: 20px;
-                }}
-                .asset-performance th, .asset-performance td {{
-                    border: 1px solid #000000;
-                    padding: 8px;
-                    text-align: left;
-                }}
-                .asset-performance th {{
-                    font-weight: bold;
-                    background-color: #f2f2f2;
-                }}
-                .number {{
-                    text-align: right;
-                }}
-                .trading-opportunities {{
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 20px;
-                    margin-top: 15px;
-                }}
-                .opportunity-card {{
-                    flex: 1 1 300px;
-                    border: 1px solid #000000;
-                    border-radius: 5px;
-                    padding: 15px;
-                    background-color: #f9f9f9;
-                }}
-            </style>
-        </head>
-        <body>
-            {formatted_content}
-        </body>
-        </html>
-        """
-
-        # Turn these into plain/html MIMEText objects
-        part = MIMEText(html, "html")
-
         # Add HTML part to MIMEMultipart message
-        message.attach(part)
+        message.attach(MIMEText(email_html, "html"))
 
         # Create secure connection with server and send email
         context = ssl.create_default_context()

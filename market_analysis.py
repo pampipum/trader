@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = 'analysis_cache'
 MARKET_CACHE_FILE = os.path.join(CACHE_DIR, 'market_analysis.json')
-CACHE_EXPIRY = timedelta(hours=24)
+CACHE_EXPIRY = timedelta(hours=1)
 
 MACRO_ASSETS = {
     'VIX': '^VIX',
