@@ -12,3 +12,4 @@ openai
 schedule
 python-dotenv
 markdown2
+fundingrate
