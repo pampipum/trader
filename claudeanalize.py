@@ -23,6 +23,8 @@ COINAPI_KEY = os.getenv('COINAPI_KEY')
 # Updated Parameters
 TIMEFRAMES = ['90m', '1d', '1wk']
 LOOKBACK_YEARS = 1
+CACHE_EXPIRY = {'90m': timedelta(hours=2), '1d': timedelta(days=1), '1wk': timedelta(weeks=1)}
+
 
 # Indicator parameters
 WT_CHANNEL_LEN = 10
@@ -53,50 +55,52 @@ def fetch_or_load_data(symbol, timeframes, filename_prefix='data'):
     for timeframe in timeframes:
         filename = os.path.join(DATA_CACHE_DIR, f'{filename_prefix}_{symbol.replace("/", "").replace("^", "").replace("-", "")}__{timeframe}.pkl')
         
-        if os.path.exists(filename) and timeframe != '90m':  # Don't use cache for 90m data
+        if os.path.exists(filename):
             print(f"Loading {timeframe} data from {filename}")
             with open(filename, 'rb') as f:
-                df = pickle.load(f)
+                df, last_updated = pickle.load(f)
             
             df.index = pd.to_datetime(df.index).tz_localize(None)
             
-            # Update data
-            end_date = datetime.now().replace(tzinfo=None)
-            start_date = df.index[-1].replace(tzinfo=None)
-            latest_data = fetch_financial_data(symbol, timeframe, start=start_date, end=end_date)
-            if not latest_data.empty:
-                latest_data.index = latest_data.index.tz_localize(None)
-                df = pd.concat([df, latest_data[~latest_data.index.isin(df.index)]])
-        else:
-            print(f"Fetching {timeframe} data from yfinance...")
-            df = fetch_financial_data(symbol, timeframe)
-            
-            if not df.empty:
-                df.index = pd.to_datetime(df.index).tz_localize(None)
-                
-                if timeframe != '90m':  # Don't cache 90m data
-                    with open(filename, 'wb') as f:
-                        pickle.dump(df, f)
+            # Check if cache has expired
+            if datetime.now() - last_updated > CACHE_EXPIRY[timeframe]:
+                print(f"Cache expired for {timeframe}, fetching new data...")
+                df = fetch_financial_data(symbol, timeframe)
+                last_updated = datetime.now()
             else:
-                print(f"No data available for {symbol} with timeframe {timeframe}")
-                continue  # Skip to the next timeframe
-        
-        df.index = pd.to_datetime(df.index).tz_localize(None)
-        
-        # Filter for the last LOOKBACK_YEARS
-        if timeframe != '90m':
-            cutoff_date = datetime.now().replace(tzinfo=None) - timedelta(days=365*LOOKBACK_YEARS)
-            df = df[df.index > cutoff_date]
+                # Update data for non-expired cache
+                end_date = datetime.now().replace(tzinfo=None)
+                start_date = df.index[-1].replace(tzinfo=None)
+                latest_data = fetch_financial_data(symbol, timeframe, start=start_date, end=end_date)
+                if not latest_data.empty:
+                    latest_data.index = latest_data.index.tz_localize(None)
+                    df = pd.concat([df, latest_data[~latest_data.index.isin(df.index)]])
+        else:
+            print(f"No cache found for {timeframe}, fetching all data...")
+            df = fetch_financial_data(symbol, timeframe)
+            last_updated = datetime.now()
         
         if not df.empty:
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+            
+            # Filter data based on timeframe
+            if timeframe == '90m':
+                cutoff_date = datetime.now().replace(tzinfo=None) - timedelta(days=59)
+            else:
+                cutoff_date = datetime.now().replace(tzinfo=None) - timedelta(days=365*LOOKBACK_YEARS)
+            df = df[df.index > cutoff_date]
+            
+            # Save updated data to cache
+            with open(filename, 'wb') as f:
+                pickle.dump((df, last_updated), f)
+            
             print(f"\nLatest {timeframe} data points:")
             print(df.tail().to_string())
             dataframes[timeframe] = df
         else:
-            print(f"No data available for {symbol} with timeframe {timeframe} after filtering")
+            print(f"No data available for {symbol} with timeframe {timeframe}")
     
     return dataframes
-
 
 def fetch_financial_data(symbol, timeframe, start=None, end=None):
     end = end or datetime.now()
@@ -111,14 +115,7 @@ def fetch_financial_data(symbol, timeframe, start=None, end=None):
             start = end - timedelta(days=365*LOOKBACK_YEARS*2)  # Fetch more data for weekly timeframe
 
     # Convert timeframe to yfinance interval
-    if timeframe == '90m':
-        interval = '90m'
-    elif timeframe == '1d':
-        interval = '1d'
-    elif timeframe == '1wk':
-        interval = '1wk'
-    else:
-        raise ValueError(f"Unsupported timeframe: {timeframe}")
+    interval = timeframe
 
     try:
         df = yf.download(symbol.replace('/', '-'), start=start, end=end, interval=interval)
@@ -134,34 +131,6 @@ def fetch_financial_data(symbol, timeframe, start=None, end=None):
     df = df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'})
     return df
 
-
-def fetch_all_ohlcv(symbol, timeframe):
-    exchange = ccxt.binance()
-    all_ohlcv = []
-    start_date = int((datetime.now().replace(tzinfo=None) - timedelta(days=365*LOOKBACK_YEARS)).timestamp() * 1000)
-
-    while True:
-        print(f"Fetching data from {exchange.iso8601(start_date)}...")
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=start_date, limit=1000)
-        if len(ohlcv) == 0:
-            break
-        all_ohlcv.extend(ohlcv)
-        start_date = ohlcv[-1][0] + 1
-    
-    if not all_ohlcv:
-        print(f"No data fetched for {symbol} with timeframe {timeframe}")
-        return pd.DataFrame()  # Return an empty DataFrame if no data is fetched
-
-    df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df.set_index('timestamp', inplace=True)
-    df.index = df.index.tz_localize(None)  # Ensure tz-naive
-    
-    print(f"Fetched {len(df)} datapoints for {symbol} with timeframe {timeframe}")
-    print(df.head())
-    print(df.tail())
-    
-    return df
 
 def add_indicators(df):
     # Wave Trend Oscillator
