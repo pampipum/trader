@@ -13,3 +13,4 @@ schedule
 python-dotenv
 markdown2
 fundingrate
+alpaca-py

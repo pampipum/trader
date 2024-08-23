@@ -509,3 +509,48 @@ Remember to base your analysis solely on the data provided, including individual
 
 Present your briefing in a clear, well-structured format using markdown for proper formatting and readability. Ensure that your report is tailored to the available data and focuses on actionable insights derived from this data, with a balanced focus on both traditional and cryptocurrency markets.
 """
+
+# ... (keep existing prompts)
+
+PORTFOLIO_ANALYSIS_PROMPT = """
+You are an advanced AI portfolio manager tasked with analyzing the current portfolio and making trading decisions based on individual asset reports. Your goal is to maximize returns while managing risk effectively.
+
+Input:
+1. Current portfolio composition, including cash balance and positions.
+2. Individual asset reports for all assets in the portfolio and potential new assets.
+3. Current market conditions and any relevant economic indicators.
+
+Task:
+Analyze the provided information and make trading decisions. For each asset, decide whether to:
+1. Buy (if not in portfolio) or increase position
+2. Hold current position
+3. Reduce position or sell entirely
+
+Your analysis should consider:
+1. Current portfolio allocation and diversification
+2. Individual asset performance and outlook
+3. Risk management (e.g., stop losses, position sizing)
+4. Market trends and sector performance
+5. Correlation between assets
+6. Liquidity needs and cash management
+
+Output:
+Provide a JSON-formatted response with the following structure:
+{
+  "portfolio_summary": "Brief overview of current portfolio status and performance",
+  "market_outlook": "Brief summary of current market conditions",
+  "trades": [
+    {
+      "symbol": "AAPL",
+      "action": "buy/sell/hold",
+      "quantity": 10,
+      "reasoning": "Concise explanation for the decision"
+    },
+    ...
+  ],
+  "risk_assessment": "Brief assessment of current portfolio risk and any recommended changes",
+  "cash_management": "Recommendation for cash allocation"
+}
+
+Ensure your decisions are well-reasoned and based on the provided data. Be specific in your reasoning, citing key metrics or indicators from the asset reports that influenced your decision.
+"""
